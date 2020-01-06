@@ -39,7 +39,7 @@ import machine
 from unm3driver import Nm3
 from unm3driver import MessagePacket
 from unm3networksimple import Nm3NetworkSimple
-from ota_update.main.ota_updater import OTAUpdater
+from ota_updater import OTAUpdater
 
 
 
@@ -81,12 +81,12 @@ def download_and_install_update_if_available():
     if not ota_cfg:
         ota_cfg = default_ota_config()
         save_ota_config(ota_cfg)
-     o = OTAUpdater(ota_cfg['git']['url'])
-     o.download_and_install_update_if_available(ota_cfg['wifi']['ssid'], ota_cfg['wifi']['password'])
+    o = OTAUpdater(ota_cfg['git']['url'])
+    o.download_and_install_update_if_available(ota_cfg['wifi']['ssid'], ota_cfg['wifi']['password'])
 
 def boot():
-     download_and_install_update_if_available()
-     start()
+    download_and_install_update_if_available()
+    start()
 
 def rtc_callback(unknown):
     # RTC Callback function - Toggle LED
@@ -123,7 +123,7 @@ def default_app_config():
     return cfg
     
     
- def start():
+def start():
     # Startup Load Configuration
     app_cfg = load_app_config()
     if not app_cfg:
