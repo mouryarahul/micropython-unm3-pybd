@@ -36,9 +36,9 @@ import json
 import os
 import pyb
 import machine
-from unm3_pybd.unm3driver import Nm3
-from unm3_pybd.unm3driver import MessagePacket
-from unm3_pybd.unm3networksimple import Nm3NetworkSimple
+from .unm3driver import Nm3
+from .unm3driver import MessagePacket
+from .unm3networksimple import Nm3NetworkSimple
 
 
 

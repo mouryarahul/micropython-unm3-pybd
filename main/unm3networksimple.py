@@ -33,7 +33,7 @@
 
 #from collections import deque
 
-from unm3driver import Nm3
+from .unm3driver import Nm3
 
 
 class Nm3NetworkSimple:
