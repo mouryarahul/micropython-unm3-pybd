@@ -36,64 +36,18 @@ import json
 import os
 import pyb
 import machine
-from unm3driver import Nm3
-from unm3driver import MessagePacket
-from unm3networksimple import Nm3NetworkSimple
-from ota_updater import OTAUpdater
+from unm3_pybd.unm3driver import Nm3
+from unm3_pybd.unm3driver import MessagePacket
+from unm3_pybd.unm3networksimple import Nm3NetworkSimple
 
 
-
-
-def load_ota_config(config_filename='otaconfig.json'):
-    '''Load OTA Configuration from JSON file.
-       If file doesn't exist, create the file and save default settings.
-    '''
-    ota_config = None
-    try:
-        with open(config_filename) as json_config_file:
-            ota_config = json.load(json_config_file)
-    except Exception:
-        pass
-
-    return ota_config
-    
-def save_ota_config(ota_config, config_filename='otaconfig.json'):
-    '''Save OTA Configuration to JSON file.
-       If file doesn't exist, create the file.
-    '''
-    with open(config_filename, 'w') as json_config_file:
-        json.dump(ota_config, json_config_file)
-
-
-def default_ota_config():
-    ''' Get default OTA Configuration
-    '''
-    cfg = { 'git' : { 'url' : 'https://github.com/bensherlock/nm3-micropython-pybd' },
-            'wifi' : { 'ssid' : 'SSID_VALUE',
-                       'password' : 'PASSWORD_VALUE' } }
-    return cfg
-
-
-
-def download_and_install_update_if_available():
-    # Startup Load Configuration
-    ota_cfg = load_ota_config()
-    if not ota_cfg:
-        ota_cfg = default_ota_config()
-        save_ota_config(ota_cfg)
-    o = OTAUpdater(ota_cfg['git']['url'])
-    o.download_and_install_update_if_available(ota_cfg['wifi']['ssid'], ota_cfg['wifi']['password'])
-
-def boot():
-    download_and_install_update_if_available()
-    start()
 
 def rtc_callback(unknown):
     # RTC Callback function - Toggle LED
     pyb.LED(2).toggle()
 
 
-def load_app_config(config_filename='appconfig.json'):
+def load_app_config(config_filename='config/app_cfg.json'):
     '''Load Application Configuration from JSON file.
        If file doesn't exist, create the file and save default settings.
     '''
@@ -106,7 +60,7 @@ def load_app_config(config_filename='appconfig.json'):
 
     return app_config
     
-def save_app_config(app_config, config_filename='appconfig.json'):
+def save_app_config(app_config, config_filename='config/app_cfg.json'):
     '''Save Application Configuration to JSON file.
        If file doesn't exist, create the file.
     '''
@@ -123,7 +77,7 @@ def default_app_config():
     return cfg
     
     
-def start():
+def main():
     # Startup Load Configuration
     app_cfg = load_app_config()
     if not app_cfg:
@@ -229,5 +183,3 @@ def start():
     #wl_ap.active(0)             # shut down the AP
 
 
-# Run boot()
-boot()
