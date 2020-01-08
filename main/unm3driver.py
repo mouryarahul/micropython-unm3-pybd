@@ -300,6 +300,9 @@ class Nm3:
         resp_bytes = self._uart.read(13)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -340,6 +343,9 @@ class Nm3:
         resp_bytes = self._uart.read(7)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -373,6 +379,9 @@ class Nm3:
         resp_bytes = self._uart.read(13)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -422,6 +431,9 @@ class Nm3:
         resp_bytes = self._uart.read(7)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -441,6 +453,9 @@ class Nm3:
             resp_bytes = self._uart.read(13) 
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -489,6 +504,9 @@ class Nm3:
         resp_bytes = self._uart.read(6)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -530,6 +548,9 @@ class Nm3:
         resp_bytes = self._uart.read(9)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -577,6 +598,9 @@ class Nm3:
         resp_bytes = self._uart.read(9)
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
@@ -597,6 +621,9 @@ class Nm3:
             resp_bytes = self._uart.read(13) 
 
         # Check that it has received all the expected bytes. Return error if not.
+        if not resp_bytes:
+            print('Error receiving bytes. None received.'
+            return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
                   ' expected=' + str(len(resp_string)))
