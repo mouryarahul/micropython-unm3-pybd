@@ -301,7 +301,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -344,7 +344,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -380,7 +380,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -432,7 +432,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -454,7 +454,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -505,7 +505,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -549,7 +549,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -599,7 +599,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
@@ -622,7 +622,7 @@ class Nm3:
 
         # Check that it has received all the expected bytes. Return error if not.
         if not resp_bytes:
-            print('Error receiving bytes. None received.'
+            print('Error receiving bytes. None received.')
             return -1
         if len(resp_bytes) != len(resp_string):
             print('Error receiving number of bytes=' + str(len(resp_bytes)) +
