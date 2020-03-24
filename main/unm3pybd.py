@@ -2,7 +2,7 @@
 #
 # MicroPython Driver for NM3
 #
-# This file is part of nm3-micropython-pybd derived from NM3 Python Driver. 
+# This file is part of nm3-micropython-pybd derived from NM3 Python Driver.
 # https://github.com/bensherlock/nm3-micropython-pybd
 # https://github.com/bensherlock/nm3-python-driver
 #
@@ -20,7 +20,7 @@
 #
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,12 +31,12 @@
 #
 """MicroPython PYBD Example using the NM3 over UART."""
 
-#import network
-import utime
+# import network
 import json
 import os
 import pyb
 import machine
+import utime
 
 """
 from .unm3driver import Nm3
@@ -44,11 +44,10 @@ from .unm3driver import MessagePacket
 from .unm3networksimple import Nm3NetworkSimple
 """
 
-
+"""
 def rtc_callback(unknown):
     # RTC Callback function - Toggle LED
     pyb.LED(2).toggle()
-
 
 def load_app_config(config_filename='config/app_cfg.json'):
     '''Load Application Configuration from JSON file.
@@ -62,7 +61,7 @@ def load_app_config(config_filename='config/app_cfg.json'):
         pass
 
     return app_config
-    
+
 def save_app_config(app_config, config_filename='config/app_cfg.json'):
     '''Save Application Configuration to JSON file.
        If file doesn't exist, create the file.
@@ -76,10 +75,11 @@ def default_app_config():
     '''
     cfg = { 'network' : { 'gateway' : 7 },
             'sensing' : { 'period_s' : 60 } }
-            
+
     return cfg
-    
-    
+"""
+
+
 def main():
     """
     # Startup Load Configuration
@@ -93,30 +93,29 @@ def main():
     led_red = pyb.LED(1)
     led_green = pyb.LED(2)
     led_blue = pyb.LED(3)
-
+    # switch OfF all led by default
     led_red.off()
     led_green.off()
     led_blue.off()
 
     for i in range(20):
-        utime.sleep(1)
         led_red.toggle()
         utime.sleep(1)
+        led_red.toggle()
         led_green.toggle()
+        utime.sleep(1)
+        led_green.toggle()
+        led_blue.toggle()
         utime.sleep(1)
         led_blue.toggle()
 
-
-
-    """
     # https://forum.micropython.org/viewtopic.php?t=6222
-    #usb_connected = pyb.USB_VCP().isconnected()
+    # usb_connected = pyb.USB_VCP().isconnected()
 
-    #if usb_connected:
+    # if usb_connected:
     #    led_green.on()
-    #else:
+    # else:
     #    led_green.off()
-    """
 
     """
     uart = machine.UART(1, 9600, bits=8, parity=None, stop=1, timeout=1000)
@@ -131,9 +130,7 @@ def main():
     rtc.init() # reinitialise - various bugs in firmware at present
     rtc.wakeup(app_cfg['sensing']['period_s'] * 1000) # milliseconds
     message_count = 0
-    """
 
-    """
     while True:
         # Main Loop
         # LED On
@@ -171,8 +168,7 @@ def main():
         #pyb.standby()
     """
 
-
-
+    """
     # Disable the external 3.3v regulator (used by SDcard)
     #pyb.Pin.board.EN_3V3.off()
 
@@ -201,5 +197,4 @@ def main():
 
     #wl_ap.status('stations')    # get a list of connection stations
     #wl_ap.active(0)             # shut down the AP
-
-
+    """
