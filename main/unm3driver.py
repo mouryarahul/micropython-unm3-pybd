@@ -57,6 +57,7 @@ class MessagePacket:
         self._destination_address = None
         self._packet_type = None
         self._packet_payload = None
+        self._datetime = None
 
 
     def __call__(self):
