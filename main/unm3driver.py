@@ -32,11 +32,9 @@
 """MicroPython driver for the NM3 over UART."""
 
 #from collections import deque
-
 from ucollections import deque
 import machine
 import utime
-
 
 
 class MessagePacket:
@@ -57,65 +55,106 @@ class MessagePacket:
         self._destination_address = None
         self._packet_type = None
         self._packet_payload = None
-        self._datetime = None
-
+        # Timestamps for various uses
+        self._timestamp = None
+        self._timestamp_millis = None
+        self._timestamp_micros = None
 
     def __call__(self):
         return self
 
-
     @property
     def source_address(self) -> int:
-        """Gets the source address."""
+        """Get the source address."""
         return self._source_address
 
     @source_address.setter
     def source_address(self,
                        source_address: int):
-        """Sets the the source address (0-255)."""
+        """Set the the source address (0-255)."""
         if source_address and (source_address < 0 or source_address > 255):
             raise ValueError('Invalid Address Value (0-255): {!r}'.format(source_address))
         self._source_address = source_address
 
-
     @property
     def destination_address(self) -> int:
-        """Gets the destination address."""
+        """Get the destination address."""
         return self._destination_address
 
     @destination_address.setter
     def destination_address(self,
                             destination_address: int):
-        """Sets the the destination address (0-255)."""
+        """Set the the destination address (0-255)."""
         if destination_address and (destination_address < 0 or destination_address > 255):
             raise ValueError('Invalid Address Value (0-255): {!r}'.format(destination_address))
         self._destination_address = destination_address
 
-
     @property
     def packet_type(self):
-        """Gets the packet type (unicast, broadcast)."""
+        """Get the packet type (unicast, broadcast)."""
         return self._packet_type
 
     @packet_type.setter
     def packet_type(self,
                     packet_type):
-        """Sets the the packet type (unicast, broadcast)."""
+        """Set the the packet type (unicast, broadcast)."""
         if packet_type not in self.PACKETTYPES:
             raise ValueError('Invalid Packet Type: {!r}'.format(packet_type))
         self._packet_type = packet_type
 
-
     @property
     def packet_payload(self):
-        """Gets the packet payload bytes."""
+        """Get the packet payload bytes."""
         return self._packet_payload
 
     @packet_payload.setter
     def packet_payload(self,
                        packet_payload):
-        """Sets the the packet payload bytes ."""
+        """Set the the packet payload bytes ."""
         self._packet_payload = packet_payload
+
+    @property
+    def timestamp(self):
+        """Get the timestamp of packet arrival taken from a RTC."""
+        return self._timestamp
+
+    @timestamp.setter
+    def timestamp(self, timestamp):
+        """Set the timestamp of packet arrival taken from a RTC."""
+        self._timestamp = timestamp
+
+    @property
+    def timestamp_millis(self) -> int:
+        """Get the timestamp of packet arrival taken from a millisecond counter."""
+        return self._timestamp_millis
+
+    @timestamp_millis.setter
+    def timestamp_millis(self, timestamp_millis: int):
+        """Set the timestamp of packet arrival taken from a millisecond counter."""
+        self._timestamp_millis = timestamp_millis
+
+    @property
+    def timestamp_micros(self) -> int:
+        """Get the timestamp of packet arrival taken from a microsecond counter."""
+        return self._timestamp_micros
+
+    @timestamp_micros.setter
+    def timestamp_micros(self, timestamp_micros: int):
+        """Set the timestamp of packet arrival taken from a microsecond counter."""
+        self._timestamp_micros = timestamp_micros
+
+    def json(self):
+        """Get the packet fields as a json object."""
+        jason = {"source_address": self._source_address,
+                 "destination_address": self._destination_address,
+                 "packet_type": self.PACKETTYPE_NAMES[self._packet_type] if self._packet_type else None,
+                 "payload_length": len(self._packet_payload) if self._packet_payload else 0,
+                 "payload_bytes": self._packet_payload,
+                 "timestamp": "%d-%02d-%02dT%02d:%02d:%02d" % self._timestamp[:6] if self._timestamp else None,
+                 "timestamp_millis": self._timestamp_millis,
+                 "timestamp_micros": self._timestamp_micros
+                 }
+        return jason
 
 
 class MessagePacketParser:
@@ -706,3 +745,34 @@ class Nm3:
         """
 
         return self._received_packet_parser.get_packet()
+
+
+
+
+def test_message_packet():
+    """Tests on the MessagePacket."""
+    import json
+
+    message_packet = MessagePacket()
+
+    # Empty Packet
+    jason = message_packet.json()
+    print(json.dumps(jason))
+
+    # Populated Packet
+    message_packet.source_address = 7
+    message_packet.destination_address = 255
+    message_packet.packet_type = MessagePacket.PACKETTYPE_UNICAST
+    message_packet.packet_payload = [0, 1, 2, 3, 4, 5, 6, 7]
+    message_packet.timestamp = utime.localtime()
+    jason = message_packet.json()
+    print(json.dumps(jason))
+
+
+def main():
+    """Run tests on the driver code."""
+    test_message_packet()
+
+
+if __name__ == '__main__':
+    main()
