@@ -163,7 +163,7 @@ class MessagePacket:
                  "PacketType": MessagePacket.PACKETTYPE_NAMES[self._packet_type] if self._packet_type else None,
                  "PayloadLength": len(self._packet_payload) if self._packet_payload else 0,
                  "PayloadBytes": self._packet_payload,
-                 "PacketTimestampCount": self._packet_timestamp_count
+                 "PacketTimestampCount": self._packet_timestamp_count,
                  "Timestamp": "%d-%02d-%02dT%02d:%02d:%02d" % self._timestamp[:6] if self._timestamp else None,
                  "TimestampMillis": self._timestamp_millis,
                  "TimestampMicros": self._timestamp_micros
@@ -197,7 +197,8 @@ class MessagePacketParser:
         self._current_message_packet = None
         self._current_byte_counter = 0
         self._current_integer = 0
-        self._packet_queue = deque()
+        # Micropython needs a defined size of deque
+        self._packet_queue = deque((), 10)
 
     def __call__(self):
         return self
