@@ -29,14 +29,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-"""MicroPython driver for the NM3 over UART."""
+"""MicroPython driver for the NM3."""
 
 #from collections import deque
-
 from ucollections import deque
-import machine
 import utime
-
 
 
 class MessagePacket:
@@ -57,72 +54,129 @@ class MessagePacket:
         self._destination_address = None
         self._packet_type = None
         self._packet_payload = None
+        self._packet_timestamp_count = None
 
+        # Timestamps for various uses
+        self._timestamp = None
+        self._timestamp_millis = None
+        self._timestamp_micros = None
 
     def __call__(self):
         return self
 
-
     @property
     def source_address(self) -> int:
-        """Gets the source address."""
+        """Get the source address."""
         return self._source_address
 
     @source_address.setter
     def source_address(self,
                        source_address: int):
-        """Sets the the source address (0-255)."""
+        """Set the the source address (0-255)."""
         if source_address and (source_address < 0 or source_address > 255):
             raise ValueError('Invalid Address Value (0-255): {!r}'.format(source_address))
         self._source_address = source_address
 
-
     @property
     def destination_address(self) -> int:
-        """Gets the destination address."""
+        """Get the destination address."""
         return self._destination_address
 
     @destination_address.setter
     def destination_address(self,
                             destination_address: int):
-        """Sets the the destination address (0-255)."""
+        """Set the the destination address (0-255)."""
         if destination_address and (destination_address < 0 or destination_address > 255):
             raise ValueError('Invalid Address Value (0-255): {!r}'.format(destination_address))
         self._destination_address = destination_address
 
-
     @property
     def packet_type(self):
-        """Gets the packet type (unicast, broadcast)."""
+        """Get the packet type (unicast, broadcast)."""
         return self._packet_type
 
     @packet_type.setter
     def packet_type(self,
                     packet_type):
-        """Sets the the packet type (unicast, broadcast)."""
+        """Set the the packet type (unicast, broadcast)."""
         if packet_type not in self.PACKETTYPES:
             raise ValueError('Invalid Packet Type: {!r}'.format(packet_type))
         self._packet_type = packet_type
 
-
     @property
     def packet_payload(self):
-        """Gets the packet payload bytes."""
+        """Get the packet payload bytes."""
         return self._packet_payload
 
     @packet_payload.setter
     def packet_payload(self,
                        packet_payload):
-        """Sets the the packet payload bytes ."""
+        """Set the the packet payload bytes ."""
         self._packet_payload = packet_payload
 
+    @property
+    def packet_timestamp_count(self):
+        """Gets the packet timestamp count - an overflowing 32-bit counter at 24MHz."""
+        return self._packet_timestamp_count
+
+    @packet_timestamp_count.setter
+    def packet_timestamp_count(self,
+                               packet_timestamp_count):
+        """Sets the packet timestamp count - an overflowing 32-bit counter at 24MHz."""
+        self._packet_timestamp_count = packet_timestamp_count
+
+
+    @property
+    def timestamp(self):
+        """Get the timestamp of packet arrival taken from a RTC."""
+        return self._timestamp
+
+    @timestamp.setter
+    def timestamp(self, timestamp):
+        """Set the timestamp of packet arrival taken from a RTC."""
+        self._timestamp = timestamp
+
+    @property
+    def timestamp_millis(self) -> int:
+        """Get the timestamp of packet arrival taken from a millisecond counter."""
+        return self._timestamp_millis
+
+    @timestamp_millis.setter
+    def timestamp_millis(self, timestamp_millis: int):
+        """Set the timestamp of packet arrival taken from a millisecond counter."""
+        self._timestamp_millis = timestamp_millis
+
+    @property
+    def timestamp_micros(self) -> int:
+        """Get the timestamp of packet arrival taken from a microsecond counter."""
+        return self._timestamp_micros
+
+    @timestamp_micros.setter
+    def timestamp_micros(self, timestamp_micros: int):
+        """Set the timestamp of packet arrival taken from a microsecond counter."""
+        self._timestamp_micros = timestamp_micros
+
+    def json(self):
+        """Get the packet fields as a json object."""
+        jason = {"SourceAddress": self._source_address,
+                 "DestinationAddress": self._destination_address,
+                 "PacketType": MessagePacket.PACKETTYPE_NAMES[self._packet_type] if self._packet_type else None,
+                 "PayloadLength": len(self._packet_payload) if self._packet_payload else 0,
+                 "PayloadBytes": self._packet_payload,
+                 "PacketTimestampCount": self._packet_timestamp_count,
+                 "Timestamp": "%d-%02d-%02dT%02d:%02d:%02d" % self._timestamp[:6] if self._timestamp else None,
+                 "TimestampMillis": self._timestamp_millis,
+                 "TimestampMicros": self._timestamp_micros
+                 }
+        return jason
 
 class MessagePacketParser:
     """Message Packet Parser takes bytes and uses a state machine to construct
        MessagePacket structures"""
 
     PARSERSTATE_IDLE, PARSERSTATE_TYPE, \
-    PARSERSTATE_ADDRESS, PARSERSTATE_LENGTH, PARSERSTATE_PAYLOAD = range(5)
+    PARSERSTATE_ADDRESS, PARSERSTATE_LENGTH, \
+    PARSERSTATE_PAYLOAD, PARSERSTATE_TIMESTAMPFLAG, PARSERSTATE_TIMESTAMP = range(7)
 
     PARSERSTATE_NAMES = {
         PARSERSTATE_IDLE: 'Idle',
@@ -130,16 +184,20 @@ class MessagePacketParser:
         PARSERSTATE_ADDRESS: 'Address',
         PARSERSTATE_LENGTH: 'Length',
         PARSERSTATE_PAYLOAD: 'Payload',
+        PARSERSTATE_TIMESTAMPFLAG: 'TimestampFlag',
+        PARSERSTATE_TIMESTAMP: 'Timestamp',
     }
 
     PARSERSTATES = (PARSERSTATE_IDLE, PARSERSTATE_TYPE,
-                    PARSERSTATE_ADDRESS, PARSERSTATE_LENGTH, PARSERSTATE_PAYLOAD)
+                    PARSERSTATE_ADDRESS, PARSERSTATE_LENGTH,
+                    PARSERSTATE_PAYLOAD, PARSERSTATE_TIMESTAMPFLAG, PARSERSTATE_TIMESTAMP)
 
     def __init__(self):
         self._parser_state = self.PARSERSTATE_IDLE
         self._current_message_packet = None
         self._current_byte_counter = 0
         self._current_integer = 0
+        # Micropython needs a defined size of deque
         self._packet_queue = deque((), 10)
 
     def __call__(self):
@@ -161,6 +219,11 @@ class MessagePacketParser:
         # Received Message Structures:
         # '#B25500' + payload bytes + '\r\n'
         # '#U00' + payload bytes + '\r\n'
+        # Or for some NM3 firmware versions:
+        # '#B25500' + payload bytes + 'T' + timestamp + '\r\n'
+        # '#U00' + payload bytes + 'T' + timestamp + '\r\n'
+        # Where timestamp is a 10 digit (fixed width) number representing a 32-bit counter value
+        # on a 24 MHz clock which is latched when the synch waveform arrives
 
         return_flag = False
 
@@ -180,6 +243,7 @@ class MessagePacketParser:
                 self._current_message_packet.destination_address = None
                 self._current_message_packet.packet_type = MessagePacket.PACKETTYPE_BROADCAST
                 self._current_message_packet.packet_payload = []
+                self._current_message_packet.packet_timestamp_count = 0
 
                 self._current_byte_counter = 3
                 self._current_integer = 0
@@ -191,6 +255,7 @@ class MessagePacketParser:
                 self._current_message_packet.destination_address = None
                 self._current_message_packet.packet_type = MessagePacket.PACKETTYPE_UNICAST
                 self._current_message_packet.packet_payload = []
+                self._current_message_packet.packet_timestamp_count = 0
 
                 self._current_byte_counter = 2
                 self._current_integer = 0
@@ -229,6 +294,33 @@ class MessagePacketParser:
 
             if self._current_byte_counter == 0:
                 # Completed this packet
+                #self._packet_queue.append(self._current_message_packet)
+                #self._current_message_packet = None
+                #return_flag = True
+                self._parser_state = self.PARSERSTATE_TIMESTAMPFLAG
+
+        elif self._parser_state == self.PARSERSTATE_TIMESTAMPFLAG:
+
+            if bytes([next_byte]).decode('utf-8') == 'T':
+                self._current_byte_counter = 10
+                self._current_integer = 0
+                self._parser_state = self.PARSERSTATE_TIMESTAMP
+            else:
+                # No timestamp on this message. Completed Packet
+                self._packet_queue.append(self._current_message_packet)
+                self._current_message_packet = None
+                return_flag = True
+                self._parser_state = self.PARSERSTATE_IDLE
+
+        elif self._parser_state == self.PARSERSTATE_TIMESTAMP:
+            self._current_byte_counter = self._current_byte_counter - 1
+
+            # Append the next ascii string integer digit
+            self._current_integer = (self._current_integer * 10) + int(bytes([next_byte]).decode('utf-8'))
+
+            if self._current_byte_counter == 0:
+                # Completed this packet
+                self._current_message_packet.packet_timestamp_count = self._current_integer
                 self._packet_queue.append(self._current_message_packet)
                 self._current_message_packet = None
                 return_flag = True
@@ -250,7 +342,7 @@ class MessagePacketParser:
         return False
 
 
-    def get_packet(self) -> MessagePacket:
+    def get_packet(self) -> Union[MessagePacket, None]:
         """Gets the next received packet or None if the queue is empty.
         """
         if not self._packet_queue:
@@ -263,17 +355,110 @@ class MessagePacketParser:
 
 
 
-class Nm3:
-    """NM3 Driver over UART."""
+class Nm3ResponseParser:
+    """Parser for responses to commands."""
 
-    def __init__(self,
-                 uart: machine.UART):
-        """Constructor. 
-           """
-        self._uart = uart
+    PARSERSTATE_IDLE, PARSERSTATE_STRING = range(2)
+
+    PARSERSTATE_NAMES = {
+        PARSERSTATE_IDLE: 'Idle',
+        PARSERSTATE_STRING: 'String',
+    }
+
+    PARSERSTATES = (PARSERSTATE_IDLE, PARSERSTATE_STRING)
+
+    def __init__(self):
+        self._parser_state = self.PARSERSTATE_IDLE
+        self._current_bytes = []
+        self._current_byte_counter = 0
+        self._delimiter_byte = ord('\n')
+        self._has_response_flag = False
+
+
+    def reset(self):
+        """Resets the parser state machine."""
+        self._parser_state = self.PARSERSTATE_IDLE
+        self._current_bytes = []
+        self._current_byte_counter = 0
+        self._has_response_flag = False
+
+    def set_delimiter_byte(self, delimiter_byte):
+        self._delimiter_byte = delimiter_byte
+
+
+    def process(self, next_byte) -> bool:
+        """Process the next byte. Returns True if a response completes on this byte."""
+
+        return_flag = False
+
+        #print('next_byte: ' + bytes([next_byte]).decode('utf-8'))
+
+        if self._parser_state == self.PARSERSTATE_IDLE:
+
+            if (bytes([next_byte]).decode('utf-8') == '#') or (bytes([next_byte]).decode('utf-8') == '$'):
+                # Next state
+                self._current_bytes = []
+                self._current_byte_counter = 0
+                self._parser_state = self.PARSERSTATE_STRING
+
+        elif self._parser_state == self.PARSERSTATE_STRING:
+            self._current_bytes.append(next_byte)
+            self._current_byte_counter = self._current_byte_counter + 1
+
+            # Check delimiter
+            if next_byte == self._delimiter_byte:
+                self._has_response_flag = True
+                return_flag = True
+                self._parser_state = self.PARSERSTATE_IDLE
+
+        else:
+            # Unknown
+            self._parser_state = self.PARSERSTATE_IDLE
+
+        return return_flag
+
+    def has_response(self):
+        return self._has_response_flag
+
+    def get_last_response_string(self):
+        return bytes(self._current_bytes).decode('utf-8')
+
+# Micropython needs a defined size of deque
+# self._incoming_bytes_buffer = deque((), 300) # List/Deque of integers
+
+# Also need a generic timeout function as micropython and python return different
+# results for time.time(). Python returns a float. Micropython only returns an integer.
+# https://docs.micropython.org/en/latest/library/utime.html
+class TimeoutHelper:
+
+    def get_timeout_time(self, offset_in_seconds: float):
+        """Get a platform specific timeout time based on the provided offset in float seconds."""
+        # micropython use the ms integers
+        offset_in_milliseconds = int(offset_in_seconds * 1000.0)
+        timeout_time = utime.ticks_add(utime.ticks_ms(), offset_in_milliseconds)
+        return timeout_time
+
+    def is_timedout(self, timeout_time):
+        """A platform specific test of the timeout time."""
+        # micropython ticks_diff(ticks1, ticks2) has the same meaning as ticks1 - ticks2
+        return utime.ticks_diff(utime.ticks_ms(), timeout_time) >= 0
+
+
+class Nm3:
+    """NM3 Driver over input/output binary streams with non-blocking Read() and Write() functions."""
+
+    RESPONSE_TIMEOUT = 0.5
+
+    def __init__(self, input_stream, output_stream):
+        """Constructor. input_stream and output_stream need to be (bytes) IO with
+        non-blocking Read() and Write() binary functions."""
+
+        self._input_stream = input_stream
+        self._output_stream = output_stream
+        # Micropython needs a defined size of deque
         self._incoming_bytes_buffer = deque((), 300) # List/Deque of integers
         self._received_packet_parser = MessagePacketParser()
-        #self._received_packets = deque()
+
 
     def __call__(self):
         return self
@@ -286,29 +471,36 @@ class Nm3:
         self.poll_receiver()
 
 
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
+
         # Write the command to the serial port
         cmd_string = '$?'
         cmd_bytes = cmd_string.encode('utf-8')
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the response from the serial port
-        # Expecting '#A255V21941\r\n' 13 bytes
-        resp_string = '#A255V21941\r\n'
-        resp_bytes = self._uart.read(13)
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
 
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
-            return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
+        if not response_parser.has_response():
             return -1
 
-        resp_string = resp_bytes.decode('utf-8')
+        # Expecting '#A255V21941\r\n'
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 5:
+            return -1
 
         addr_string = resp_string[2:5]
         addr_int = int(addr_string)
@@ -328,30 +520,36 @@ class Nm3:
         # Absorb any incoming bytes into the receive buffers to process later
         self.poll_receiver()
 
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
 
         # Write the command to the serial port
         cmd_string = '$A' + '{:03d}'.format(address)
         cmd_bytes = cmd_string.encode('utf-8')
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the response from the serial port
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
         # Expecting '#A255\r\n' 7 bytes
-        resp_string = '#A255\r\n'
-        resp_bytes = self._uart.read(7)
-
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 5:
             return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
-            return -1
-
-        resp_string = resp_bytes.decode('utf-8')
 
         addr_string = resp_string[2:5]
         addr_int = int(addr_string)
@@ -365,29 +563,36 @@ class Nm3:
         # Absorb any incoming bytes into the receive buffers to process later
         self.poll_receiver()
 
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
+
         # Write the command to the serial port
         cmd_string = '$?'
         cmd_bytes = cmd_string.encode('utf-8')
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the response from the serial port
-        # Expecting '#A255V21941\r\n' 13 bytes
-        resp_string = '#A255V21941\r\n'
-        resp_bytes = self._uart.read(13)
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
 
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
-            return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
+        if not response_parser.has_response():
             return -1
 
-        resp_string = resp_bytes.decode('utf-8')
+        # Expecting '#A255V21941\r\n'
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 11:
+            return -1
 
         adc_string = resp_string[6:11]
         adc_int = int(adc_string)
@@ -413,66 +618,64 @@ class Nm3:
         # Absorb any incoming bytes into the receive buffers to process later
         self.poll_receiver()
 
-        # Store the default timeout
-        #default_read_timeout = self._serial_port.timeout
-
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
 
         # Write the command to the serial port
         cmd_string = '$P' + '{:03d}'.format(address)
         cmd_bytes = cmd_string.encode('utf-8')
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the first response from the serial port
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
         # Expecting '$P255\r\n' 7 bytes
-        resp_string = '$P255\r\n'
-        resp_bytes = self._uart.read(7)
-
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
-            return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 5:  # E
             return -1
 
 
-        # Set the temporary read timeout for the propagation delay
-        #self._serial_port.timeout = timeout
-        start_ms = utime.ticks_ms()
-        
         # Now await the range or TO after 4 seconds
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(timeout)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
         # Expecting '#R255T12345\r\n' or '#TO\r\n' 13 or 5 bytes
-        resp_string = '#R255T12345\r\n'
-        resp_bytes = self._uart.read(13)
-        
-        while not resp_bytes and (utime.ticks_diff(utime.ticks_ms(), start_ms) < (timeout*1000)):
-            resp_bytes = self._uart.read(13) 
-
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 11: # TO
             return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
-            # Set the default read timeout
-            #self._serial_port.timeout = default_read_timeout
-            return -1
-
-        resp_string = resp_bytes.decode('utf-8')
 
         time_string = resp_string[6:11]
         time_int = int(time_string)
 
         # Convert the time value to a float seconds. T = time_int * 31.25E-6.
         time = float(time_int) * 31.25E-6
-
-        # Set the default read timeout
-        #self._serial_port.timeout = default_read_timeout
 
         return time
 
@@ -490,26 +693,38 @@ class Nm3:
         # Absorb any incoming bytes into the receive buffers to process later
         self.poll_receiver()
 
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
+
+
         # Write the command to the serial port
         cmd_string = '$B' + '{:02d}'.format(len(message_bytes))
         cmd_bytes = cmd_string.encode('utf-8') + message_bytes
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the first response from the serial port
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
         # Expecting '$B00\r\n' 6 bytes
-        resp_string = '$B00\r\n'
-        resp_bytes = self._uart.read(6)
 
         # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
-            return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 4:
             return -1
 
 
@@ -534,26 +749,38 @@ class Nm3:
         # Absorb any incoming bytes into the receive buffers to process later
         self.poll_receiver()
 
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
+
+
         # Write the command to the serial port
         cmd_string = '$U' + '{:03d}'.format(address) + '{:02d}'.format(len(message_bytes))
         cmd_bytes = cmd_string.encode('utf-8') + message_bytes
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the first response from the serial port
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
         # Expecting '$U12300\r\n' 9 bytes
-        resp_string = '$U12300\r\n'
-        resp_bytes = self._uart.read(9)
 
         # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
-            return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 7:
             return -1
 
         # If the address is invalid then returns 'E\r\n'
@@ -581,57 +808,60 @@ class Nm3:
         # Absorb any incoming bytes into the receive buffers to process later
         self.poll_receiver()
 
-        # Store the default timeout
-        #default_read_timeout = self._serial_port.timeout
+        response_parser = Nm3ResponseParser()
+        timeout_helper = TimeoutHelper()
+
 
         # Write the command to the serial port
         cmd_string = '$M' + '{:03d}'.format(address) + '{:02d}'.format(len(message_bytes))
         cmd_bytes = cmd_string.encode('utf-8') + message_bytes
         # Check that it has written all the bytes. Return error if not.
-        if self._uart.write(cmd_bytes) != len(cmd_bytes):
+        if self._output_stream.write(cmd_bytes) != len(cmd_bytes):
             print('Error writing command')
             return -1
 
-        # Await the first response from the serial port
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(Nm3.RESPONSE_TIMEOUT)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
+
         # Expecting '$M12300\r\n' 9 bytes
-        resp_string = '$M12300\r\n'
-        resp_bytes = self._uart.read(9)
-
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
-            return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 7:  # E
             return -1
 
-        # If the address is invalid then returns 'E\r\n'
-
-        # Set the temporary read timeout for the propagation delay
-        #self._serial_port.timeout = timeout
-        start_ms = utime.ticks_ms()
 
         # Now await the range or TO after 4 seconds
+        # Await the response
+        response_parser.reset()
+        awaiting_response = True
+        timeout_time = timeout_helper.get_timeout_time(timeout)
+        while awaiting_response and not timeout_helper.is_timedout(timeout_time):
+            resp_bytes = self._input_stream.read()
+            for b in resp_bytes:
+                if response_parser.process(b):
+                    # Got a response
+                    awaiting_response = False
+                    break
+
+        if not response_parser.has_response():
+            return -1
+
         # Expecting '#R255T12345\r\n' or '#TO\r\n' 13 or 5 bytes
-        resp_string = '#R255T12345\r\n'
-        resp_bytes = self._uart.read(13)
-        
-        while not resp_bytes and (utime.ticks_diff(utime.ticks_ms(), start_ms) < (timeout*1000)):
-            resp_bytes = self._uart.read(13) 
-
-        # Check that it has received all the expected bytes. Return error if not.
-        if not resp_bytes:
-            print('Error receiving bytes. None received.')
+        resp_string = response_parser.get_last_response_string()
+        if not resp_string or len(resp_string) < 11: # TO
             return -1
-        if len(resp_bytes) != len(resp_string):
-            print('Error receiving number of bytes=' + str(len(resp_bytes)) +
-                  ' expected=' + str(len(resp_string)))
-            # Set the default read timeout
-            #self._serial_port.timeout = default_read_timeout
-            return -1
-
-        resp_string = resp_bytes.decode('utf-8')
 
         time_string = resp_string[6:11]
         time_int = int(time_string)
@@ -639,40 +869,19 @@ class Nm3:
         # Convert the time value to a float seconds. T = time_int * 31.25E-6.
         time = float(time_int) * 31.25E-6
 
-        # Set the default read timeout
-        #self._serial_port.timeout = default_read_timeout
-
         return time
 
 
     def poll_receiver(self):
-        """Check the serial port and place bytes into incoming buffer for processing.
+        """Check the input_stream (non-blocking) and place bytes into incoming buffer for processing.
         """
 
-        # Absorb any incoming bytes into the receive buffers to process later
-        while self._uart.any():
-            a_byte = self._uart.read(1)[0] # as individual integer
-            self._incoming_bytes_buffer.append(a_byte)
+        resp_bytes = self._input_stream.read()
+        while resp_bytes:
+            for a_byte in resp_bytes:
+                self._incoming_bytes_buffer.append(a_byte)
 
-        #return
-		
-    def poll_receiver_blocking(self):
-        """Check the serial port and place bytes into incoming buffer for processing.
-		   Blocking on serial port read until bytes received or timeout. 
-        """
-
-        # First byte is blocking
-        some_bytes = self._uart.read(1) # Read one byte blocking until timeout
-        if some_bytes:
-            a_byte = some_bytes[0]
-            self._incoming_bytes_buffer.append(a_byte)
-
-        # Absorb any incoming bytes into the receive buffers to process later
-        while self._uart.any():
-            a_byte = self._uart.read(1)[0] # as individual integer
-            self._incoming_bytes_buffer.append(a_byte)
-
-        #return
+            resp_bytes = self._input_stream.read()
 
 
     def process_incoming_buffer(self,
@@ -705,3 +914,32 @@ class Nm3:
         """
 
         return self._received_packet_parser.get_packet()
+
+
+def test_message_packet():
+    """Tests on the MessagePacket."""
+    import json
+
+    message_packet = MessagePacket()
+
+    # Empty Packet
+    jason = message_packet.json()
+    print(json.dumps(jason))
+
+    # Populated Packet
+    message_packet.source_address = 7
+    message_packet.destination_address = 255
+    message_packet.packet_type = MessagePacket.PACKETTYPE_UNICAST
+    message_packet.packet_payload = [0, 1, 2, 3, 4, 5, 6, 7]
+    message_packet.timestamp = utime.localtime()
+    jason = message_packet.json()
+    print(json.dumps(jason))
+
+
+def main():
+    """Run tests on the driver code."""
+    test_message_packet()
+
+
+if __name__ == '__main__':
+    main()
